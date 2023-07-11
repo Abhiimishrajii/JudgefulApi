@@ -1,0 +1,125 @@
+const express = require('express');
+const bodyParser = require('body-parser');
+const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
+const { spawn } = require('child_process');
+
+// Create an Express app
+const app = express();
+
+// Middleware setup
+app.use(bodyParser.json());
+
+// Connect to MongoDB
+mongoose.connect('mongodb://localhost:27017/judge0', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+});
+
+// Create a schema for code submissions
+const codeSubmissionSchema = new mongoose.Schema({
+  code: {
+    type: String,
+    required: true,
+  },
+  language: {
+    type: String,
+    required: true,
+  },
+});
+
+// Create a model based on the schema
+const CodeSubmission = mongoose.model('CodeSubmission', codeSubmissionSchema);
+
+// Code submission endpoint
+app.post('/code/submit', authenticateUser, (req, res) => {
+  // Extract code snippet and language from the request body
+  const { code, language } = req.body;
+
+  // Create a new code submission instance
+  const submission = new CodeSubmission({
+    code,
+    language,
+  });
+
+  // Save the submission to the database
+  submission.save((err) => {
+    if (err) {
+      // Handle the error appropriately
+      return res.status(500).json({ error: 'Failed to save code submission.' });
+    }
+
+    // Return a response
+    res.status(200).json({ message: 'Code submitted successfully.' });
+  });
+});
+
+// Code execution endpoint
+app.get('/code/execute/:id', authenticateUser, (req, res) => {
+  const submissionId = req.params.id;
+
+  // Find the code submission in the database
+  CodeSubmission.findById(submissionId, (err, submission) => {
+    if (err || !submission) {
+      // Handle the error or submission not found
+      return res.status(404).json({ error: 'Code submission not found.' });
+    }
+
+    // Execute the code snippet
+    const executionResult = executeCode(submission.code, submission.language);
+
+    // Update the submission with execution result
+    submission.executionResult = executionResult;
+
+   
+    submission.save((err) => {
+      if (err) {
+        // Handle the error appropriately
+        return res.status(500).json({ error: 'Failed to save execution result.' });
+      }
+
+      // Return the execution result
+      res.status(200).json({ executionResult });
+    });
+  });
+});
+
+// Helper function to execute code in a sandbox environment
+function executeCode(code, language) {
+  // Add sandbox execution logic here
+  // Return the execution result
+}
+
+// Authentication middleware
+function authenticateUser(req, res, next) {
+  // Extract the JWT token from the request header
+  const token = req.headers.authorization;
+
+  if (!token) {
+    return res.status(401).json({ error: 'Authentication token required.' });
+  }
+
+  try {
+    // Verify and decode the JWT token
+    const decodedToken = jwt.verify(token, 'secret-key');
+
+    // Attach the user information to the request object
+    req.user = decodedToken.user;
+
+    // Proceed to the next middleware
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid authentication token.' });
+  }
+}
+
+
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Internal server error.' });
+});
+
+// Start the server
+app.listen(3000, () => {
+  console.log('Server is running on port 3000');
+});
